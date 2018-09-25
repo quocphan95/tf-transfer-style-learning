@@ -71,22 +71,24 @@ def calculate_jstyle(session, style_features, coeficients=None):
     def get_gram_matrix(feature):
         flat_feature = tf.reshape(feature, (-1, feature.shape[-1]))
         return tf.matmul(tf.transpose(flat_feature), flat_feature)
+
+    def calculate_layer_error(style_layer_gram, image_layer_gram, layer_shape):
+        m, n_H, n_W, n_C = layer_shape
+        layer_error = (1 / (2 * n_H * n_W * n_C) ** 2 *
+                       tf.reduce_sum(tf.square(tf.subtract(style_layer_gram, image_layer_gram))))
+        return layer_error
         
     graph = session.graph
     if coeficients == None:
         coeficient = 1 / len(style_features)
         coeficients = {key: coeficient for key in style_features.keys()}
     jstyle = None
-    style_features = {key: value for (key, value) in style_features.items() if key=="block3_conv1"}
     for layer_name, style_layer_feature in style_features.items():
-        tensor_style_layer_feature = tf.constant(style_layer_feature, dtype=tf.float32)
-        tensor_image_layer_feature = graph.get_tensor_by_name(layer_name + "/Relu:0")
-        style_layer_gram = get_gram_matrix(tensor_style_layer_feature)
-        image_layer_gram = get_gram_matrix(tensor_image_layer_feature)
-        m, n_H, n_W, n_C = style_layer_feature.shape
-        
-        layer_error = (coeficients[layer_name] / (2 * n_H * n_W * n_C) ** 2 *
-                       tf.reduce_sum(tf.square(tf.subtract(tensor_style_layer_feature, tensor_image_layer_feature))))
+        style_layer_gram = get_gram_matrix(tf.constant(style_layer_feature, dtype=tf.float32))
+        image_layer_gram = get_gram_matrix(graph.get_tensor_by_name(layer_name + "/Relu:0"))
+        layer_error = coeficients[layer_name] * calculate_layer_error(style_layer_gram,
+                                                                    image_layer_gram,
+                                                                    style_layer_feature.shape)
         
         jstyle = layer_error if jstyle == None else tf.add(jstyle, layer_error)
     return jstyle
@@ -127,20 +129,32 @@ if __name__ == "__main__":
         style_image = pre.read_image(style_path)
         style_features = get_all_features(session, style_image)
         image_tensor = [var for var in tf.global_variables() if var.name=="block_input/image:0"][0]
-        session.run(tf.assign(image_tensor, np.full((224,224,3), 255)))
-        j = calculate_j(session, content_features, style_features, "block1_conv1", beta=0.01)
-        j_c = calculate_jcontent(session, content_features, "block1_conv1")
-        j_s = calculate_jstyle(session, content_features, )
-        optimizer = tf.train.GradientDescentOptimizer(10000).minimize(j, var_list=[image_tensor])
+        
+        init_image = np.zeros((224,224,3)).astype(np.uint8) #(style_image * 0.4 + content_image * 0.6).astype(np.uint8)
+        cv2.imshow("image", init_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        session.run(tf.assign(image_tensor, init_image))
+        
+        #j = calculate_j(session, content_features, style_features, "block5_conv1", alpha=10, beta=40)
+        j = calculate_jcontent(session, content_features, "block1_conv1")
+        #j = calculate_jstyle(session, style_features)
+        
+        optimizer = tf.train.AdamOptimizer(10)
+        minimize_op = optimizer.minimize(j, var_list=[image_tensor])
+        session.run(tf.variables_initializer(optimizer.variables()))
         stop_training = False
-        while not stop_training:
+        #while not stop_training:
+        for iteration in range(140):
             try:
-                (cost, _) = session.run((j_c, optimizer))
-                print(cost)
+                (cost, _) = session.run((j, minimize_op))
+                print("{0:>6}:{1:>15}".format(iteration, cost))
             except KeyboardInterrupt:
                 stop_training = True
+                break
         generated_image = session.run(image_tensor).astype(np.uint8)
         cv2.imshow("image", generated_image)
+        cv2.imwrite("out.jpg", generated_image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
             

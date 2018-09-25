@@ -2,6 +2,7 @@ from keras.engine.topology import Layer
 from keras import backend as K
 from keras import layers
 from keras.models import Model
+from keras.applications.imagenet_utils import preprocess_input
 import tensorflow as tf
 import numpy as np
 import keras
@@ -47,7 +48,7 @@ class InputLayer(Layer):
         This is a identity layer so we just return the weights unchanged
         Output: the tensor of shape (image_shape)
         """
-        return K.expand_dims(self.image, axis=0)
+        return preprocess_input(K.expand_dims(self.image, axis=0))
     
     def compute_output_shape(self, input_shape):
         return (1, self.image_shape[0], self.image_shape[1], self.image_shape[2])
@@ -135,7 +136,7 @@ def vgg16(image_shape):
 
     return Model(inputs=inputs, outputs = x)
 
-def get_tf_vgg16_session(image_shape=(224,224,3), path_to_weights_file="./weights/vgg16_notop.h5"):
+def get_tf_vgg16_session(image_shape=(224,224,3), path_to_weights_file="./weights/vgg16_weights_tf_dim_ordering_tf_kernels_notop.h5"):
     """
     Get the tensorflow graph of the keras redefined vgg16
 
