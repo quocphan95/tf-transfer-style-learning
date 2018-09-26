@@ -29,6 +29,9 @@ class CONFIG:
         "block5_conv1",
         "block5_conv2",
         "block5_conv3")
+    decay_rate = 0.75 # decrease lr by 25% when optimizer overshoot
+    freeze_learing_rate = 40
+    standard_precision = 6
 
 def get_all_features(session, image, conv_layer_names):
     """
@@ -113,6 +116,19 @@ def calculate_j(jcontent, jstyle, alpha = 10, beta = 40):
     """
     return alpha * jcontent + beta * jstyle
 
+def show_image(title, image):
+    """
+    Show an image
+
+    Parameters:
+    title: title of the window that show the image
+    image: image to be shown
+    """
+    cv2.imshow(title, image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
 if __name__ == "__main__":
     #assert len(sys.argv) > 2, "Not enough arguments"
     #content_path = sys.argv[1]
@@ -122,38 +138,58 @@ if __name__ == "__main__":
     keras_session = vgg16.get_tf_vgg16_session()
     
     with keras_session as session:
-        content_image = pre.read_image(content_path)
+        content_image = pre.preprocess_image(pre.read_image(content_path, CONFIG.image_shape[0:2]))
         content_features = get_all_features(session, content_image, CONFIG.conv_layer_names)
-        style_image = pre.read_image(style_path)
+        style_image = pre.preprocess_image(pre.read_image(style_path, CONFIG.image_shape[0:2]))
         style_features = get_all_features(session, style_image, CONFIG.conv_layer_names)
         image_tensor = [var for var in tf.global_variables() if var.name=="block_input/image:0"][0]
-        
-        init_image = np.zeros((224,224,3)).astype(np.uint8)
-        
+        init_image = pre.preprocess_image(pre.read_image("./out.jpg", CONFIG.image_shape[0:2]))
+        session.run(tf.assign(image_tensor, init_image))
         jcontent = calculate_jcontent(session, content_features, CONFIG.content_layer)
         jstyle = calculate_jstyle(session, style_features, CONFIG.style_coefs)
         j = calculate_j(jcontent, jstyle)
-
-        j = jcontent
-        
-        optimizer = tf.train.AdamOptimizer(10)
+        j = jstyle
+        learning_rate = 100.0
+        learning_rate_ph = tf.placeholder(dtype=tf.float32)
+        precision = CONFIG.standard_precision # number of decimal places
+        optimizer = tf.train.AdamOptimizer(learning_rate_ph)
         minimize_op = optimizer.minimize(j, var_list=[image_tensor])
         session.run(tf.variables_initializer(optimizer.variables()))
         stop_training = False
         iteration = 1
+        cost = np.inf
+        last_cost = np.inf
+        freeze_iteration_remain = CONFIG.freeze_learing_rate # Wait at least some iters before changing learning rate again
         while not stop_training:
             try:
-                (cost, _) = session.run((j, minimize_op))
-                print("{0:>6}:{1:>15}".format(iteration, cost))
+                last_cost = cost
+                (cost, _) = session.run((j, minimize_op), feed_dict={learning_rate_ph: learning_rate})
+                print("{0:>6}:{1:>40.{2}f}".format(iteration, cost, precision))
                 iteration += 1
+                freeze_iteration_remain -= freeze_iteration_remain and 1
+                # learinig rate decay
+                if not (cost < last_cost) and not freeze_iteration_remain: # overshooting happen
+                    learning_rate = learning_rate * CONFIG.decay_rate
+                    freeze_iteration_remain = CONFIG.freeze_learing_rate
+                    print("Overshooting happen!, learing rate now is {0:.{1}f}".format(learning_rate, CONFIG.standard_precision))
             except KeyboardInterrupt:
-                stop_training = True
-                break
-        generated_image = session.run(image_tensor).astype(np.uint8)
-        cv2.imshow("image", generated_image)
+                command = input("\ncommand ({0:.{1}f}):".format(learning_rate, CONFIG.standard_precision))
+                if command == "stop":
+                    stop_training = True
+                elif command == "show":
+                    generated_image = pre.depreprocess_image(session.run(image_tensor)).astype(np.uint8)
+                    show_image("generated image", generated_image)
+                elif command == "save":
+                    generated_image = pre.depreprocess_image(session.run(image_tensor)).astype(np.uint8)
+                    cv2.imwrite("out.jpg", generated_image)
+                elif command.startswith("precision "):
+                    try:
+                        precision = int(command.split()[1])
+                    except (ValueError, IndexError):
+                        pass
+        generated_image = pre.depreprocess_image(session.run(image_tensor)).astype(np.uint8)
+        show_image("generated image", generated_image)
         cv2.imwrite("out.jpg", generated_image)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
             
         
     
