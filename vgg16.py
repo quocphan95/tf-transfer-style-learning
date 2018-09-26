@@ -48,7 +48,7 @@ class InputLayer(Layer):
         This is a identity layer so we just return the weights unchanged
         Output: the tensor of shape (image_shape)
         """
-        return preprocess_input(K.expand_dims(self.image, axis=0))
+        return K.expand_dims(self.image, axis=0)
     
     def compute_output_shape(self, input_shape):
         return (1, self.image_shape[0], self.image_shape[1], self.image_shape[2])
