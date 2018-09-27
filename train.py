@@ -32,6 +32,7 @@ class CONFIG:
     decay_rate = 0.75 # decrease lr by 25% when optimizer overshoot
     freeze_learing_rate = 40
     standard_precision = 6
+    init_learning_rate = 10.0
 
 def get_all_features(session, image, conv_layer_names):
     """
@@ -82,9 +83,15 @@ def calculate_jstyle(session, style_features, coeficients):
     style_features: a dictionary contains all features of style image
     coeficients: a dictionary contains coeficients associate with the layers
     """
-    def get_gram_matrix(feature):
+    def get_gram_matrix_tensor(feature):
+        assert isinstance(feature, tf.Tensor), "input must be a tensor"
         flat_feature = tf.reshape(feature, (-1, feature.shape[-1]))
         return tf.matmul(tf.transpose(flat_feature), flat_feature)
+
+    def get_gram_matrix(feature):
+        assert isinstance(feature, np.ndarray), "input must be numpy array"
+        flat_feature = feature.reshape((-1, feature.shape[-1]))
+        return np.dot(flat_feature.T, flat_feature)
 
     def calculate_layer_error(style_layer_gram, image_layer_gram, layer_shape):
         m, n_H, n_W, n_C = layer_shape
@@ -95,8 +102,8 @@ def calculate_jstyle(session, style_features, coeficients):
     graph = session.graph
     jstyle = 0
     for layer_name, coeficient in coeficients:
-        style_layer_gram = get_gram_matrix(tf.constant(style_features[layer_name], dtype=tf.float32))
-        image_layer_gram = get_gram_matrix(graph.get_tensor_by_name(layer_name + "/Relu:0"))
+        style_layer_gram = get_gram_matrix(style_features[layer_name])
+        image_layer_gram = get_gram_matrix_tensor(graph.get_tensor_by_name(layer_name + "/Relu:0"))
         layer_error = coeficient * calculate_layer_error(style_layer_gram, image_layer_gram, style_features[layer_name].shape)
         jstyle += layer_error
     return jstyle
@@ -142,7 +149,8 @@ def generate_init_image(content, style, noise_rate=0.2):
     shape = content.shape
     assert shape == style.shape, "content and style shape must be the same"
     noise_image = np.random.uniform(0, 255, shape)
-    return (1 - noise_rate) / 2 * (content + style) + noise_rate * noise_image
+    image = (1 - noise_rate) * (content) + noise_rate * noise_image
+    return image.astype(np.uint8)
 
 
 if __name__ == "__main__":
@@ -168,7 +176,7 @@ if __name__ == "__main__":
         jcontent = calculate_jcontent(session, content_features, CONFIG.content_layer)
         jstyle = calculate_jstyle(session, style_features, CONFIG.style_coefs)
         j = calculate_j(jcontent, jstyle)
-        learning_rate = 100.0
+        learning_rate = CONFIG.init_learning_rate
         learning_rate_ph = tf.placeholder(dtype=tf.float32)
         precision = CONFIG.standard_precision # number of decimal places
         optimizer = tf.train.AdamOptimizer(learning_rate_ph)
