@@ -128,6 +128,22 @@ def show_image(title, image):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+def generate_init_image(content, style, noise_rate=0.2):
+    """
+    Generate an intit image for training based on content and style images
+
+    Parameters:
+    content: the content image that was not preprocessed
+    style: the style image that was not preprocessed
+    noise_rate: the noise rate
+    Return:
+    the init image ready for training
+    """
+    shape = content.shape
+    assert shape == style.shape, "content and style shape must be the same"
+    noise_image = np.random.uniform(0, 255, shape)
+    return (1 - noise_rate) / 2 * (content + style) + noise_rate * noise_image
+
 
 if __name__ == "__main__":
     #assert len(sys.argv) > 2, "Not enough arguments"
@@ -138,17 +154,20 @@ if __name__ == "__main__":
     keras_session = vgg16.get_tf_vgg16_session()
     
     with keras_session as session:
-        content_image = pre.preprocess_image(pre.read_image(content_path, CONFIG.image_shape[0:2]))
+        content_image = pre.read_image(content_path, CONFIG.image_shape[0:2])
+        style_image = pre.read_image(style_path, CONFIG.image_shape[0:2])
+        init_image = generate_init_image(content_image, style_image)
+        show_image("", init_image)
+        content_image = pre.preprocess_image(content_image)
+        style_image = pre.preprocess_image(style_image)
         content_features = get_all_features(session, content_image, CONFIG.conv_layer_names)
-        style_image = pre.preprocess_image(pre.read_image(style_path, CONFIG.image_shape[0:2]))
         style_features = get_all_features(session, style_image, CONFIG.conv_layer_names)
         image_tensor = [var for var in tf.global_variables() if var.name=="block_input/image:0"][0]
-        init_image = pre.preprocess_image(pre.read_image("./out.jpg", CONFIG.image_shape[0:2]))
+        init_image = pre.preprocess_image(init_image)
         session.run(tf.assign(image_tensor, init_image))
         jcontent = calculate_jcontent(session, content_features, CONFIG.content_layer)
         jstyle = calculate_jstyle(session, style_features, CONFIG.style_coefs)
         j = calculate_j(jcontent, jstyle)
-        j = jstyle
         learning_rate = 100.0
         learning_rate_ph = tf.placeholder(dtype=tf.float32)
         precision = CONFIG.standard_precision # number of decimal places
