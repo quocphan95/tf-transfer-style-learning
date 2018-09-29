@@ -5,6 +5,7 @@ __all__ = ["read_image", "preprocess_image", "depreprocess_image"]
 
 class CONFIG:
     mean = np.asarray([[123.68, 103.939, 116.779]])
+    std_dev = np.asarray([[58.395, 57.12, 57.375]])
 
 def read_image(image_path, output_size):
     """
@@ -29,8 +30,7 @@ def preprocess_image(image):
     Return:
     preprocessed image
     """
-    image = image - CONFIG.mean
-    return image
+    return image - CONFIG.mean
 
 def depreprocess_image(preprocessed_image):
     """
@@ -42,5 +42,4 @@ def depreprocess_image(preprocessed_image):
     Return:
     image in original format
     """
-    preprocessed_image = preprocessed_image + CONFIG.mean
-    return preprocessed_image
+    return preprocessed_image + CONFIG.mean

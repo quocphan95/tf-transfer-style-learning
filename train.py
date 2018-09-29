@@ -7,14 +7,14 @@ import cv2
 import numpy as np
 
 class CONFIG:
-    image_shape = (224, 224, 3)
+    image_shape = (300, 400, 3)
     style_coefs = (
             ("block1_conv1", 0.2),
             ("block2_conv1", 0.2),
             ("block3_conv1", 0.2),
             ("block4_conv1", 0.2),
             ("block5_conv1", 0.9))
-    content_layer = "block1_conv1"
+    content_layer = "block5_conv1"
     conv_layer_names = (
         "block1_conv1",
         "block1_conv2",
@@ -69,10 +69,9 @@ def calculate_jcontent(session, content_features, layer_name):
     """
     graph = session.graph
     tensor_image_layer_feature = graph.get_tensor_by_name(layer_name + "/Relu:0")
-    tensor_content_layer_feature = tf.constant(content_features[layer_name])
     m, n_H, n_W, n_C = content_features[layer_name].shape
-    return 1 / (4 * n_H * n_W * n_C) * tf.reduce_sum(
-        tf.square(tf.subtract(tensor_image_layer_feature, tensor_content_layer_feature)))
+    return 1 / 2 * tf.reduce_sum(
+        tf.square(tf.subtract(tensor_image_layer_feature, content_features[layer_name])))
     
 def calculate_jstyle(session, style_features, coeficients):
     """
@@ -131,11 +130,29 @@ def show_image(title, image):
     title: title of the window that show the image
     image: image to be shown
     """
+
+    def rescale(array):
+        amax = np.max(array)
+        amin = np.min(array)
+        array = (array - amin) * 255 / (amax - amin)
+        return array
+
+    # scale image to [0, 255]
+    reds = image[:, :, 0]
+    greens = image[:, :, 1]
+    blues = image[:, :, 2]
+    reds = rescale(reds)
+    greens = rescale(greens)
+    blues = rescale(blues)
+    image[:, :, 0] = reds
+    image[:, :, 1] = greens
+    image[:, :, 2] = blues
+    image = image.astype(np.uint8)
     cv2.imshow(title, image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-def generate_init_image(content, style, noise_rate=0.2):
+def generate_init_image(content, noise_rate=0.6):
     """
     Generate an intit image for training based on content and style images
 
@@ -147,35 +164,38 @@ def generate_init_image(content, style, noise_rate=0.2):
     the init image ready for training
     """
     shape = content.shape
-    assert shape == style.shape, "content and style shape must be the same"
-    noise_image = np.random.uniform(0, 255, shape)
-    image = (1 - noise_rate) * (content) + noise_rate * noise_image
-    return image.astype(np.uint8)
+    assert shape == content.shape, "content and style shape must be the same"
+    noise_image = np.random.uniform(-20, 20, shape).astype(np.float32)
+    image = (1 - noise_rate) * content + noise_rate * noise_image
+    return image
 
 
 if __name__ == "__main__":
-    #assert len(sys.argv) > 2, "Not enough arguments"
-    #content_path = sys.argv[1]
-    #style_path = sys.argv[2]
-    content_path = "./c.jpg"
-    style_path = "./s.jpg"
-    keras_session = vgg16.get_tf_vgg16_session()
+    assert len(sys.argv) > 3, "Not enough arguments"
+    content_path = sys.argv[1]
+    style_path = sys.argv[2]
+    out_path = sys.argv[3]
+
+    keras_session = vgg16.get_tf_vgg16_session(CONFIG.image_shape)
     
     with keras_session as session:
-        content_image = pre.read_image(content_path, CONFIG.image_shape[0:2])
-        style_image = pre.read_image(style_path, CONFIG.image_shape[0:2])
-        init_image = generate_init_image(content_image, style_image)
-        show_image("", init_image)
+        content_image = pre.read_image(content_path, CONFIG.image_shape[0:2][::-1])
+        style_image = pre.read_image(style_path, CONFIG.image_shape[0:2][::-1])
+        init_image = generate_init_image(content_image)
+
+        show_image("init image", init_image)
+        
         content_image = pre.preprocess_image(content_image)
         style_image = pre.preprocess_image(style_image)
+        init_image = pre.preprocess_image(init_image)
+        
         content_features = get_all_features(session, content_image, CONFIG.conv_layer_names)
         style_features = get_all_features(session, style_image, CONFIG.conv_layer_names)
         image_tensor = [var for var in tf.global_variables() if var.name=="block_input/image:0"][0]
-        init_image = pre.preprocess_image(init_image)
         session.run(tf.assign(image_tensor, init_image))
         jcontent = calculate_jcontent(session, content_features, CONFIG.content_layer)
         jstyle = calculate_jstyle(session, style_features, CONFIG.style_coefs)
-        j = calculate_j(jcontent, jstyle)
+        j = calculate_j(jcontent, jstyle, alpha = 1, beta = 100)
         learning_rate = CONFIG.init_learning_rate
         learning_rate_ph = tf.placeholder(dtype=tf.float32)
         precision = CONFIG.standard_precision # number of decimal places
@@ -204,20 +224,19 @@ if __name__ == "__main__":
                 if command == "stop":
                     stop_training = True
                 elif command == "show":
-                    generated_image = pre.depreprocess_image(session.run(image_tensor)).astype(np.uint8)
+                    generated_image = pre.depreprocess_image(session.run(image_tensor))
                     show_image("generated image", generated_image)
                 elif command == "save":
-                    generated_image = pre.depreprocess_image(session.run(image_tensor)).astype(np.uint8)
+                    generated_image = pre.depreprocess_image(session.run(image_tensor))
                     cv2.imwrite("out.jpg", generated_image)
                 elif command.startswith("precision "):
                     try:
                         precision = int(command.split()[1])
                     except (ValueError, IndexError):
                         pass
-        generated_image = pre.depreprocess_image(session.run(image_tensor)).astype(np.uint8)
+        generated_image = pre.depreprocess_image(session.run(image_tensor))
         show_image("generated image", generated_image)
-        cv2.imwrite("out.jpg", generated_image)
-            
+        cv2.imwrite(out_path, generated_image)
         
     
     
