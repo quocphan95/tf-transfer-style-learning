@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 
 class CONFIG:
-    image_shape = (300, 400, 3)
+    image_shape = (224, 224, 3)
     style_coefs = (
             ("block1_conv1", 0.2),
             ("block2_conv1", 0.2),
@@ -122,21 +122,13 @@ def calculate_j(jcontent, jstyle, alpha = 10, beta = 40):
     """
     return alpha * jcontent + beta * jstyle
 
-def show_image(title, image):
-    """
-    Show an image
-
-    Parameters:
-    title: title of the window that show the image
-    image: image to be shown
-    """
-
+def convert_image_to_int(image):
     def rescale(array):
         amax = np.max(array)
         amin = np.min(array)
         array = (array - amin) * 255 / (amax - amin)
         return array
-
+    image = np.copy(image)
     # scale image to [0, 255]
     reds = image[:, :, 0]
     greens = image[:, :, 1]
@@ -147,12 +139,27 @@ def show_image(title, image):
     image[:, :, 0] = reds
     image[:, :, 1] = greens
     image[:, :, 2] = blues
-    image = image.astype(np.uint8)
+    return image.astype(np.uint8)
+
+def show_image(title, image):
+    """
+    Show an image
+
+    Parameters:
+    title: title of the window that show the image
+    image: image to be shown
+    """
+
+    image = convert_image_to_int(image)
     cv2.imshow(title, image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-def generate_init_image(content, noise_rate=0.6):
+def save_image(file_name, image):
+    image = convert_image_to_int(image)
+    cv2.imwrite(file_name, image)
+
+def generate_init_image(content, noise_rate=1.0):
     """
     Generate an intit image for training based on content and style images
 
@@ -196,6 +203,7 @@ if __name__ == "__main__":
         jcontent = calculate_jcontent(session, content_features, CONFIG.content_layer)
         jstyle = calculate_jstyle(session, style_features, CONFIG.style_coefs)
         j = calculate_j(jcontent, jstyle, alpha = 1, beta = 100)
+        j = jstyle
         learning_rate = CONFIG.init_learning_rate
         learning_rate_ph = tf.placeholder(dtype=tf.float32)
         precision = CONFIG.standard_precision # number of decimal places
@@ -228,7 +236,7 @@ if __name__ == "__main__":
                     show_image("generated image", generated_image)
                 elif command == "save":
                     generated_image = pre.depreprocess_image(session.run(image_tensor))
-                    cv2.imwrite("out.jpg", generated_image)
+                    save_image("out.jpg", generated_image)
                 elif command.startswith("precision "):
                     try:
                         precision = int(command.split()[1])
@@ -236,7 +244,7 @@ if __name__ == "__main__":
                         pass
         generated_image = pre.depreprocess_image(session.run(image_tensor))
         show_image("generated image", generated_image)
-        cv2.imwrite(out_path, generated_image)
+        save_image(out_path, generated_image)
         
     
     
