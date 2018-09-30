@@ -7,10 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class CONFIG:
-    image_shape = (224, 224, 3)
+    image_shape = (300, 400, 3)
     style_coefs = (
-            ("block1_conv1", 0.8),
-            ("block2_conv1", 0.8),)
+            ("block1_conv1", 0.2),
+            ("block2_conv1", 0.2),
+            ("block3_conv1", 0.2),
+            ("block4_conv1", 0.2),
+            ("block5_conv1", 0.9),)
     content_layer = "block5_conv1"
     conv_layer_names = (
         "block1_conv1",
@@ -120,23 +123,12 @@ def calculate_j(jcontent, jstyle, alpha = 10, beta = 40):
     return alpha * jcontent + beta * jstyle
 
 def convert_image_to_int(image):
-    def rescale(array):
-        amax = np.max(array)
-        amin = np.min(array)
-        array = (array - amin) * 255 / (amax - amin)
-        return array
     image = np.copy(image)
     # scale image to [0, 255]
-    reds = image[:, :, 0]
-    greens = image[:, :, 1]
-    blues = image[:, :, 2]
-    reds = rescale(reds)
-    greens = rescale(greens)
-    blues = rescale(blues)
-    image[:, :, 0] = reds
-    image[:, :, 1] = greens
-    image[:, :, 2] = blues
-    return image.astype(np.uint8)
+    #imax = np.max(image)
+    #imin = np.min(image)
+    #image = (image - imin) / (imax - imin)
+    return np.clip(image, 0, 255).astype(np.uint8)
 
 def show_image(title, image):
     """
@@ -155,7 +147,7 @@ def save_image(file_name, image):
     image = convert_image_to_int(image)
     plt.imsave(file_name, image)
 
-def generate_init_image(content, noise_rate=0.0):
+def generate_init_image(content, noise_rate=0.6):
     """
     Generate an intit image for training based on content and style images
 
@@ -168,7 +160,9 @@ def generate_init_image(content, noise_rate=0.0):
     """
     shape = content.shape
     assert shape == content.shape, "content and style shape must be the same"
-    noise_image = np.random.uniform(-20, 20, shape).astype(np.float32)
+    mean = np.asarray([[123.68, 103.939, 116.779]])
+    noise = np.random.uniform(-20, 20, shape).astype(np.float32)
+    noise_image = noise + mean
     image = (1 - noise_rate) * content + noise_rate * noise_image
     return image
 
@@ -199,7 +193,6 @@ if __name__ == "__main__":
         jcontent = calculate_jcontent(session, content_features, CONFIG.content_layer)
         jstyle = calculate_jstyle(session, style_features, CONFIG.style_coefs)
         j = calculate_j(jcontent, jstyle, alpha = 1, beta = 100)
-        j = jstyle
         learning_rate = CONFIG.init_learning_rate
         learning_rate_ph = tf.placeholder(dtype=tf.float32)
         precision = CONFIG.standard_precision # number of decimal places

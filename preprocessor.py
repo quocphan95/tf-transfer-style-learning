@@ -20,13 +20,10 @@ def read_image(image_path, output_size):
     image = cv2.imread(image_path)
     if image.shape != output_size:
         image = cv2.resize(image, dsize=output_size, interpolation=cv2.INTER_CUBIC).astype(np.float32)
-    print(image)
-    print("================")
     # convert to rgb
     b = np.copy(image[:, :, 0])
     image[:, :, 0] = image[:, :, 2]
     image[:, :, 2] = b
-    print(image)
     return image
 
 def preprocess_image(image):
