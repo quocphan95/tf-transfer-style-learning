@@ -3,17 +3,14 @@ import tensorflow as tf
 import numpy as np
 import vgg16
 import preprocessor as pre
-import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 
 class CONFIG:
     image_shape = (224, 224, 3)
     style_coefs = (
-            ("block1_conv1", 0.2),
-            ("block2_conv1", 0.2),
-            ("block3_conv1", 0.2),
-            ("block4_conv1", 0.2),
-            ("block5_conv1", 0.9))
+            ("block1_conv1", 0.8),
+            ("block2_conv1", 0.8),)
     content_layer = "block5_conv1"
     conv_layer_names = (
         "block1_conv1",
@@ -151,15 +148,14 @@ def show_image(title, image):
     """
 
     image = convert_image_to_int(image)
-    cv2.imshow(title, image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    plt.imshow(image)
+    plt.show()
 
 def save_image(file_name, image):
     image = convert_image_to_int(image)
-    cv2.imwrite(file_name, image)
+    plt.imsave(file_name, image)
 
-def generate_init_image(content, noise_rate=1.0):
+def generate_init_image(content, noise_rate=0.0):
     """
     Generate an intit image for training based on content and style images
 
@@ -236,7 +232,7 @@ if __name__ == "__main__":
                     show_image("generated image", generated_image)
                 elif command == "save":
                     generated_image = pre.depreprocess_image(session.run(image_tensor))
-                    save_image("out.jpg", generated_image)
+                    save_image("out.png", generated_image)
                 elif command.startswith("precision "):
                     try:
                         precision = int(command.split()[1])
