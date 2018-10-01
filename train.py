@@ -123,11 +123,15 @@ def calculate_j(jcontent, jstyle, alpha = 10, beta = 40):
     return alpha * jcontent + beta * jstyle
 
 def convert_image_to_int(image):
+    """
+    Clip the image in range [0, 255)
+
+    Parameters:
+    image: the image to be cliped
+    Return:
+    the cliped image
+    """
     image = np.copy(image)
-    # scale image to [0, 255]
-    #imax = np.max(image)
-    #imin = np.min(image)
-    #image = (image - imin) / (imax - imin)
     return np.clip(image, 0, 255).astype(np.uint8)
 
 def show_image(title, image):
@@ -144,6 +148,13 @@ def show_image(title, image):
     plt.show()
 
 def save_image(file_name, image):
+    """
+    Save the generated image to png file
+
+    Parameters:
+    file_name: name of the file
+    image: image to be save
+    """
     image = convert_image_to_int(image)
     plt.imsave(file_name, image)
 
@@ -192,7 +203,7 @@ if __name__ == "__main__":
         session.run(tf.assign(image_tensor, init_image))
         jcontent = calculate_jcontent(session, content_features, CONFIG.content_layer)
         jstyle = calculate_jstyle(session, style_features, CONFIG.style_coefs)
-        j = calculate_j(jcontent, jstyle, alpha = 1, beta = 100)
+        j = calculate_j(jcontent, jstyle, alpha = 10, beta = 100)
         learning_rate = CONFIG.init_learning_rate
         learning_rate_ph = tf.placeholder(dtype=tf.float32)
         precision = CONFIG.standard_precision # number of decimal places
